@@ -1,0 +1,184 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// Initialize the I2C LCD (set the address to 0x27 or 0x3F based on your module)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Button and Buzzer Pins
+const int jumpButton = 2;    // Jump button
+const int resetButton = 3;   // Reset button
+const int buzzer = 4;        // Buzzer
+
+// Game Variables
+int dinoPos = 1;             // Dino position (1 = ground, 0 = air)
+int obstaclePos = 15;        // Obstacle starting position
+bool gameOver = false;       // Game state
+int score = 0;               // Score counter
+bool isJumping = false;      // Track if Dino is in a jump state
+int jumpCounter = 0;         // Counter for jump duration
+int animationFrame = 0;      // Frame counter for animation
+
+// Custom Characters for Improved Visibility
+byte dinoRun1[8] = {
+  B00000,
+  B00100,
+  B01110,
+  B01110,
+  B11111,
+  B00101,
+  B01010,
+  B10001
+};
+
+byte dinoRun2[8] = {
+  B00000,
+  B00100,
+  B01110,
+  B01110,
+  B11111,
+  B01010,
+  B10100,
+  B01001
+};
+
+byte obstacle1[8] = {
+  B00100,
+  B01110,
+  B01110,
+  B01110,
+  B01110,
+  B01110,
+  B00100,
+  B00100
+};
+
+byte obstacle2[8] = {
+  B00110,
+  B01110,
+  B01110,
+  B01110,
+  B00110,
+  B00110,
+  B01100,
+  B01100
+};
+
+void setup() {
+  // Initialize LCD and pins
+  lcd.init();
+  lcd.backlight();
+  pinMode(jumpButton, INPUT_PULLUP); // Use pull-up resistor
+  pinMode(resetButton, INPUT_PULLUP);
+  pinMode(buzzer, OUTPUT);
+
+  // Create custom characters
+  lcd.createChar(0, dinoRun1);
+  lcd.createChar(1, dinoRun2);
+  lcd.createChar(2, obstacle1);
+  lcd.createChar(3, obstacle2);
+
+  // Initial display
+  lcd.print("Press Reset");
+}
+
+void loop() {
+  if (digitalRead(resetButton) == LOW) {
+    startGame(); // Reset game
+  }
+
+  if (!gameOver) {
+    updateGame();       // Update the game state
+    checkCollision();   // Check for collisions
+    updateScore();      // Update and display the score
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print("Game Over!    ");  // Display game over message
+    lcd.setCursor(0, 1);
+    lcd.print("Press Reset   ");
+  }
+
+  delay(100); // Control game speed
+}
+
+void startGame() {
+  // Reset game variables
+  gameOver = false;
+  dinoPos = 1;  // Dino starts on the ground
+  obstaclePos = 15;  // Obstacle starts at the far right
+  score = 0;  // Reset score
+  isJumping = false; // Dino is not jumping
+  jumpCounter = 0; // Reset jump counter
+  animationFrame = 0; // Reset animation frame
+  lcd.clear();  // Clear LCD screen
+}
+
+void updateGame() {
+  // Clear only the game area (not the score display)
+  lcd.setCursor(0, 0);
+  lcd.print("                "); // Clear top row
+  lcd.setCursor(0, 1);
+  lcd.print("                "); // Clear bottom row
+
+  // Handle Jump
+  if (digitalRead(jumpButton) == LOW && !isJumping) {
+    isJumping = true;    // Start jump
+    jumpCounter = 3;     // Set jump duration (3 cycles)
+    tone(buzzer, 1000, 100); // Play jump sound
+  }
+
+  if (isJumping) {
+    dinoPos = 0;         // Dino in the air (top row)
+    jumpCounter--;       // Decrease jump counter
+    if (jumpCounter <= 0) {
+      isJumping = false; // End jump after duration
+      dinoPos = 1;       // Dino returns to ground
+    }
+  }
+
+  // Alternate animation frame
+  animationFrame = (animationFrame + 1) % 2;
+
+  // Draw Dino (Animated Running or Jumping)
+  lcd.setCursor(0, dinoPos);
+  if (isJumping) {
+    lcd.write(byte(0)); // Dino Jumping Icon
+  } else {
+    if (animationFrame == 0) {
+      lcd.write(byte(0)); // Dino Running Frame 1
+    } else {
+      lcd.write(byte(1)); // Dino Running Frame 2
+    }
+  }
+
+  // Draw Obstacle (Animated)
+  lcd.setCursor(obstaclePos, 1);
+  if (animationFrame == 0) {
+    lcd.write(byte(2)); // Obstacle Frame 1
+  } else {
+    lcd.write(byte(3)); // Obstacle Frame 2
+  }
+
+  // Move the obstacle left
+  obstaclePos--;
+  if (obstaclePos < 0) {
+    obstaclePos = 15; // Reset obstacle to the right
+    score++;          // Increment score for each passed obstacle
+  }
+
+  // Display only the score number in the top-right corner
+  lcd.setCursor(15 - String(score).length(), 0); // Align number to the right
+  lcd.print(score);
+}
+
+void checkCollision() {
+  if (dinoPos == 1 && obstaclePos == 0) { // Dino on ground & obstacle collides
+    gameOver = true;        // Set game over state
+    tone(buzzer, 500, 500); // Play collision sound
+  }
+}
+
+void updateScore() {
+  // Display only the score number in the top-right corner
+  lcd.setCursor(15 - String(score).length(), 0); // Align number to the right
+  lcd.print(score);
+}
